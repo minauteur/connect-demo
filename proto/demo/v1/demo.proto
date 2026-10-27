@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package demo.v1;
+
+option go_package = "github.com/minauteur/connect-demo/internal/gen/demo/v1;demov1";
+
+import "google/api/annotations.proto";
+
+service DemoService {
+  rpc SayHello(HelloRequest) returns (HelloResponse) {
+    option (google.api.http) = {
+      post: "/v1/hello:echo"
+      body: "*"
+    };
+  }
+}
+
+message HelloRequest {
+  string name = 1;
+}
+
+message HelloResponse {
+  string message = 1;
+  string protocol_note = 2;
+}

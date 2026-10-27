@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Buf Connect Demo</title>
+  </head>
+  <body>
+    <main class="layout">
+      <section class="panel">
+        <p class="eyebrow">Interactive protocol demo</p>
+        <h1>Buf Connect in the Browser</h1>
+        <p class="subtitle">
+          Compare Connect, grpc-web, and grpc-gateway. Plain gRPC is included server-side for terminal clients.
+        </p>
+
+        <form id="demo-form" class="controls">
+          <label>
+            Name
+            <input id="name" name="name" value="Ada" autocomplete="off" />
+          </label>
+          <label>
+            Protocol
+            <select id="protocol" name="protocol">
+              <option value="connect" selected>buf connect (recommended)</option>
+              <option value="grpc-web">grpc-web</option>
+              <option value="grpc-gateway">grpc-gateway (JSON)</option>
+            </select>
+          </label>
+          <button type="submit">Send Request</button>
+        </form>
+
+        <div class="result-grid">
+          <article>
+            <h2>Response</h2>
+            <pre id="response" aria-live="polite">Send a request to see output.</pre>
+          </article>
+          <article>
+            <h2>Notes</h2>
+            <ul>
+              <li><strong>Focus:</strong> Connect gives typed browser clients with first-class gRPC semantics.</li>
+              <li><strong>grpc-web:</strong> Similar RPC shape, but protocol is tailored for browser compatibility.</li>
+              <li><strong>grpc-gateway:</strong> JSON/HTTP endpoint generated from protobuf annotations.</li>
+              <li><strong>plain gRPC:</strong> best tested with grpcurl or native gRPC clients, not direct browser fetch.</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
