@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"log"
+	"log/slog"
 	"net/http"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
+	"connectrpc.com/connect"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -37,13 +39,14 @@ func main() {
 		ctx,
 		gatewayMux,
 		grpcAddress,
-		[]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())},
+		[]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithUnaryInterceptor(newGatewayInterceptor)},
 	)
 	if err != nil {
-		log.Fatalf("register grpc-gateway: %v", err)
+		slog.Error("register grpc-gateway", "error", err)
+		panic(err)
 	}
-
-	connectPath, connectHandler := demov1connect.NewDemoServiceHandler(&service.ConnectDemoService{})
+	connectInterceptors := connect.WithInterceptors(newConnectInterceptor())
+	connectPath, connectHandler := demov1connect.NewDemoServiceHandler(&service.ConnectDemoService{}, connectInterceptors)
 
 	rootMux := http.NewServeMux()
 	rootMux.Handle(connectPath, connectHandler)
@@ -102,4 +105,18 @@ func withCORS(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func newGatewayInterceptor(ctx context.Context, method string, req, reply any, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+	slog.Info("Incoming request for...", "protocol", "grpc-gateway", "method", method)
+	return invoker(ctx, method, req, reply, cc, opts...)
+}
+
+func newConnectInterceptor() connect.UnaryInterceptorFunc {
+	return func(next connect.UnaryFunc) connect.UnaryFunc {
+		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+			slog.Info("Incoming request for...", "protocol", req.Peer().Protocol, "method", req.Spec().Procedure)
+			return next(ctx, req)
+		}
+	}
 }
