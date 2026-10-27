@@ -4,15 +4,16 @@ import (
 	"context"
 	"errors"
 	"log"
-	"net"
 	"net/http"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/reflection"
 
 	demov1 "github.com/minauteur/connect-demo/internal/gen/demo/v1"
 	demov1connect "github.com/minauteur/connect-demo/internal/gen/demo/v1/demov1connect"
@@ -23,27 +24,16 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	grpcAddress := "127.0.0.1:8081"
+	grpcAddress := "127.0.0.1:8080"
 	httpAddress := ":8080"
 
 	grpcServer := grpc.NewServer()
 	grpcSvc := &service.GRPCDemoService{}
 	demov1.RegisterDemoServiceServer(grpcServer, grpcSvc)
-
-	grpcListener, err := net.Listen("tcp", grpcAddress)
-	if err != nil {
-		log.Fatalf("listen gRPC: %v", err)
-	}
-
-	go func() {
-		log.Printf("gRPC (plain protobuf) listening on %s", grpcAddress)
-		if serveErr := grpcServer.Serve(grpcListener); serveErr != nil {
-			log.Printf("gRPC server stopped: %v", serveErr)
-		}
-	}()
+	reflection.Register(grpcServer)
 
 	gatewayMux := runtime.NewServeMux()
-	err = demov1.RegisterDemoServiceHandlerFromEndpoint(
+	err := demov1.RegisterDemoServiceHandlerFromEndpoint(
 		ctx,
 		gatewayMux,
 		grpcAddress,
@@ -60,13 +50,27 @@ func main() {
 	rootMux.Handle("/v1/", gatewayMux)
 	rootMux.Handle("/", http.FileServer(http.Dir("web/dist")))
 
+	webHandler := withCORS(rootMux)
+	multiplexedHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.ProtoMajor == 2 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
+			grpcServer.ServeHTTP(w, r)
+			return
+		}
+		webHandler.ServeHTTP(w, r)
+	})
+
 	httpServer := &http.Server{
 		Addr:    httpAddress,
-		Handler: withCORS(rootMux),
+		Handler: multiplexedHandler,
 	}
 
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+	httpServer.Protocols = protocols
+
 	go func() {
-		log.Printf("HTTP listening on %s", httpAddress)
+		log.Printf("Multiplexed server (gRPC + Connect + grpc-web + gateway) listening on %s", httpAddress)
 		log.Printf("Open http://localhost:8080 for the browser demo")
 		if serveErr := httpServer.ListenAndServe(); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			log.Printf("HTTP server stopped: %v", serveErr)
