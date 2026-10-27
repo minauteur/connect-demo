@@ -1,6 +1,4 @@
-BUF ?= buf
-NPM ?= npm
-BUF_RUN := env -u BUF_TOKEN $(BUF)
+BUF_RUN := env -u BUF_TOKEN buf
 
 .PHONY: proto proto-go proto-web buf-deps tidy run web-install web-dev web-build demo-help
 
@@ -22,13 +20,13 @@ run:
 	go run ./cmd/server
 
 web-install:
-	cd web && $(NPM) install --registry=https://registry.npmjs.org/ --always-auth=false
+	cd web && npm install --registry=https://registry.npmjs.org/ --always-auth=false
 
 web-dev:
-	cd web && $(NPM) run dev -- --host
+	cd web && npm run dev -- --host
 
 web-build:
-	cd web && $(NPM) run build
+	cd web && npm run build
 
 demo-help:
 	@echo "make proto       - generate Go + web protobuf code via Buf"
