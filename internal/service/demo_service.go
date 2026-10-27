@@ -15,7 +15,7 @@ type GRPCDemoService struct {
 }
 
 func (s *GRPCDemoService) SayHello(_ context.Context, req *demov1.HelloRequest) (*demov1.HelloResponse, error) {
-	return buildHelloResponse(req.GetName(), "plain protobuf over gRPC"), nil
+	return buildHelloResponse(req.GetName(), "plain protobuf over grpc"), nil
 }
 
 // ConnectDemoService powers the Connect endpoint and can report the wire protocol in use.
@@ -40,6 +40,6 @@ func buildHelloResponse(name string, protocol string) *demov1.HelloResponse {
 
 	return &demov1.HelloResponse{
 		Message:      fmt.Sprintf("Hello, %s!", trimmedName),
-		ProtocolNote: fmt.Sprintf("Request served using %s.", protocol),
+		ProtocolNote: fmt.Sprintf("Served with %s", protocol),
 	}
 }

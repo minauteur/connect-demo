@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
 	"log/slog"
 	"net/http"
 	"os/signal"
@@ -29,7 +28,7 @@ func main() {
 	grpcAddress := "127.0.0.1:8080"
 	httpAddress := ":8080"
 
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(grpc.UnaryInterceptor(grpcServerInterceptor))
 	grpcSvc := &service.GRPCDemoService{}
 	demov1.RegisterDemoServiceServer(grpcServer, grpcSvc)
 	reflection.Register(grpcServer)
@@ -53,7 +52,7 @@ func main() {
 	rootMux.Handle("/v1/", gatewayMux)
 	rootMux.Handle("/", http.FileServer(http.Dir("web/dist")))
 
-	webHandler := withCORS(rootMux)
+	webHandler := httpLoggingMiddleware(withCORS(rootMux))
 	multiplexedHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.ProtoMajor == 2 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
 			grpcServer.ServeHTTP(w, r)
@@ -73,10 +72,10 @@ func main() {
 	httpServer.Protocols = protocols
 
 	go func() {
-		log.Printf("Multiplexed server (gRPC + Connect + grpc-web + gateway) listening on %s", httpAddress)
-		log.Printf("Open http://localhost:8080 for the browser demo")
+		slog.Info("Multiplexed server (gRPC + Connect + grpc-web + gateway) listening", "address", httpAddress)
+		slog.Info("Open http://localhost:8080 for the browser demo")
 		if serveErr := httpServer.ListenAndServe(); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-			log.Printf("HTTP server stopped: %v", serveErr)
+			slog.Error("HTTP server stopped", "error", serveErr)
 		}
 	}()
 
@@ -85,10 +84,10 @@ func main() {
 	defer cancel()
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		log.Printf("HTTP shutdown error: %v", err)
+		slog.Error("HTTP shutdown error", "error", err)
 	}
 	grpcServer.GracefulStop()
-	log.Println("Shutdown complete")
+	slog.Info("Shutdown complete")
 }
 
 func withCORS(next http.Handler) http.Handler {
@@ -115,8 +114,29 @@ func newGatewayInterceptor(ctx context.Context, method string, req, reply any, c
 func newConnectInterceptor() connect.UnaryInterceptorFunc {
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-			slog.Info("Incoming request for...", "protocol", req.Peer().Protocol, "method", req.Spec().Procedure)
+			slog.Info("Incoming grpc request for...", "protocol", req.Peer().Protocol, "method", req.Spec().Procedure)
 			return next(ctx, req)
 		}
 	}
+}
+
+func httpLoggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Log the HTTP request type (method and path) before gRPC-Gateway processes it
+		slog.Info("Incoming http request for...", "method", r.Method, "path", r.URL.Path, "content-type", r.Header.Get("Content-Type"))
+
+		// Pass to the gRPC-Gateway mux
+		next.ServeHTTP(w, r)
+	})
+}
+
+// Intercepts requests after any transposition, but before the gRPC server has handled them
+func grpcServerInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	// Pre-processing
+	slog.Info("Incoming grpc server request for...", "method", info.FullMethod)
+
+	// Call the actual RPC handler
+	resp, err := handler(ctx, req)
+
+	return resp, err
 }
